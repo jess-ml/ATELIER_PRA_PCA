@@ -278,13 +278,55 @@ Difficulté : Moyenne (~2 heures)
 * backup_age_seconds : âge du dernier backup
 
 *..**Déposez ici une copie d'écran** de votre réussite..*
+![alt text](image.png)
 
 ---------------------------------------------------
 ### **Atelier 2 : Choisir notre point de restauration**  
 Aujourd’hui nous restaurobs “le dernier backup”. Nous souhaitons **ajouter la capacité de choisir un point de restauration**.
 
 *..Décrir ici votre procédure de restauration (votre runbook)..*  
+**Runbook : Procédure pour choisir un point de restauration précis**
+
+Actuellement, le fichier 50-job-restore.yaml restaure la base de données de cette manière : il prend le fichier le plus récent dans le PVC pra-backup et écrase la base de production avec. Pour restaurer un fichier spécifique, voici les étapes :
+
+**1. Identifier le fichier de sauvegarde voulu :**
+Lancer un pod temporaire branché sur le volume de backup pour lister les fichiers disponibles avec leur date :
+
+```
+kubectl -n pra run debug-backup --rm -it --image=alpine --overrides='{"spec": {"containers": [{"name": "debug", "image": "alpine", "command": ["sh"], "stdin": true, "tty": true, "volumeMounts": [{"name": "backup", "mountPath": "/backup"}]}], "volumes": [{"name": "backup", "persistentVolumeClaim": {"claimName": "pra-backup"}}]}}'
+ls -lh /backup
+
+```
+
+```
+exit
+```
+Il faut noter le nom exact du fichier désiré, par exemple app-1713180000.db
   
+**2. Arrêter la production et les sauvegardes :**
+```
+kubectl -n pra scale deployment flask --replicas=0
+kubectl -n pra patch cronjob sqlite-backup -p '{"spec":{"suspend":true}}'
+kubectl -n pra delete job --all
+
+```
+**3. Modifier le script de restauration :**
+
+Éditer le fichier pra/50-job-restore.yaml. Au lieu de la commande automatique (ex: cp $(ls -t /backup/*.db | head -1) /data/app.db), inscrire le chemin exact du fichier choisi à l'étape 1 :
+cp /backup/app-1713180000.db /data/app.db
+
+**4. Lancer la restauration ciblée :**
+
+```
+kubectl apply -f pra/50-job-restore.yaml
+```
+
+**5. Relancer la production :**
+
+```
+kubectl -n pra scale deployment flask --replicas=1
+kubectl -n pra patch cronjob sqlite-backup -p '{"spec":{"suspend":false}}'
+```
 ---------------------------------------------------
 Evaluation
 ---------------------------------------------------
