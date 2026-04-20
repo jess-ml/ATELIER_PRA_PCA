@@ -231,27 +231,41 @@ Faites preuve de pédagogie et soyez clair dans vos explications et procedures d
 **Exercice 1 :**  
 Quels sont les composants dont la perte entraîne une perte de données ?  
   
-*..Répondez à cet exercice ici..*
+*..La perte définitive des données survient si l'on perd le volume persistant principal (PVC pra-data) ET le volume de sauvegarde (PVC pra-backup). Dans notre architecture locale (K3d), ces deux volumes sont stockés sur le disque du même nœud (le Codespace). Donc, si le Codespace ou le "Disque du node" crash de manière irréversible, toutes les données (production et sauvegardes) sont perdues. ..*
 
 **Exercice 2 :**  
 Expliquez nous pourquoi nous n'avons pas perdu les données lors de la supression du PVC pra-data  
   
-*..Répondez à cet exercice ici..*
+*..Lors de la suppression du PVC pra-data, nous avons bien perdu la base de données de production active. Cependant, nous n'avons pas perdu nos données définitivement grâce au CronJob Kubernetes (sqlite-backup). Ce script copie automatiquement la base de données toutes les minutes vers un second volume persistant totalement indépendant : le PVC pra-backup. Nous avons donc pu piocher dans ce second volume pour restaurer la base. ..*
 
 **Exercice 3 :**  
 Quels sont les RTO et RPO de cette solution ?  
   
-*..Répondez à cet exercice ici..*
+**RPO (Recovery Point Objective - Perte de données maximale acceptable) :** Il est de 1 minute. Puisque le CronJob de sauvegarde s'exécute toutes les minutes, en cas de crash, nous perdons au maximum les données créées durant les 60 dernières secondes.
+
+**RTO (Recovery Time Objective - Temps de reprise d'activité) :** Il est de quelques minutes. C'est le temps nécessaire à un administrateur pour s'apercevoir de la panne, recréer l'infrastructure (kubectl apply -f k8s/) et lancer le script de restauration manuel (50-job-restore.yaml).
 
 **Exercice 4 :**  
 Pourquoi cette solution (cet atelier) ne peux pas être utilisé dans un vrai environnement de production ? Que manque-t-il ?   
   
-*..Répondez à cet exercice ici..*
+*..Cette solution possède plusieurs failles majeures pour la production :
+
+**1- Single Point of Failure (SPOF) physique :** Les données en production (pra-data) et les sauvegardes (pra-backup) sont physiquement sur le même serveur (le même nœud). Si le serveur brûle, tout disparaît.
+
+**2- Base de données inadaptée :** SQLite est un simple fichier local, inadapté pour de la haute disponibilité ou des accès concurrents massifs.
+
+**3- Restauration manuelle :** Le PRA nécessite une intervention humaine pour lancer le script de restauration, ce qui augmente le RTO. Il manque une externalisation des sauvegardes (off-site) et une base de données répliquée...*
   
 **Exercice 5 :**  
 Proposez une archtecture plus robuste.   
   
-*..Répondez à cet exercice ici..*
+Une architecture de production robuste nécessiterait :
+
+**1- Une base de données externe et répliquée :** Utiliser un SGBD robuste (PostgreSQL, MySQL) géré en cluster (ex: Master/Slave) ou via un service managé cloud (ex: AWS RDS, GCP Cloud SQL) multi-zones de disponibilité (Multi-AZ).
+
+**2- Des sauvegardes externalisées (Off-site) :** Envoyer les dumps de la base de données sur un stockage objet externe et distant (comme Amazon S3) avec une politique de rétention et d'immuabilité (pour se protéger des ransomwares).
+
+**3- Multi-nodes Kubernetes :** Déployer les Pods applicatifs sur plusieurs nœuds physiques différents pour garantir une haute disponibilité en cas de perte matérielle d'un serveur.
 
 ---------------------------------------------------
 Séquence 6 : Ateliers  
